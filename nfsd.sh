@@ -11,7 +11,7 @@ stop()
   echo "SIGTERM caught, terminating NFS process(es)..."
   /usr/sbin/exportfs -uav
   /usr/sbin/rpc.nfsd 0
-  pid1=`pidof rpc.nfsd`
+  pid1=`pidof nfsdcld`
   pid2=`pidof rpc.mountd`
   # For IPv6 bug:
   pid3=`pidof rpcbind`
@@ -28,6 +28,10 @@ else
   echo "Writing SHARED_DIRECTORY to /etc/exports file"
   /bin/sed -i "s@{{SHARED_DIRECTORY}}@${SHARED_DIRECTORY}@g" /etc/exports
 fi
+
+mount -t rpc_pipefs none /var/lib/nfs/rpc_pipefs
+mount -t nfsd none /proc/fs/nfsd
+chmod 777 ${SHARED_DIRECTORY}
 
 # This is here to demonsrate how multiple directories can be shared. You
 # would need a block like this for each extra share.
@@ -104,8 +108,17 @@ while true; do
     # /usr/sbin/rpc.gssd -v
     # /usr/sbin/rpc.statd
 
+    echo "Starting NFS client tracking daemon in the background..."
+    /usr/sbin/nfsdcld -d
+    echo "Starting gssproxy in the background..."
+    /usr/sbin/gssproxy -D
+    echo "Starting rpc.idmapd in the background..."
+    /usr/sbin/rpc.idmapd
     echo "Starting NFS in the background..."
     /usr/sbin/rpc.nfsd --debug 8 --no-udp --no-nfs-version 2 --no-nfs-version 3
+    # End the NLM grace period since we're only offering NFSv4
+    echo "Ending NLM grace period..."
+    echo "Y" > /proc/fs/lockd/nlm_end_grace
     echo "Exporting File System..."
     if /usr/sbin/exportfs -rv; then
       /usr/sbin/exportfs
